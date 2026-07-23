@@ -3,5 +3,14 @@ node_modules
 .output
 .env
 .env.*
+!.env.example
 dist
 *.log
+
+# prisma init 自動安裝的 AI 助理參考文件,跟專案程式碼無關
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
+
+/app/generated/prisma

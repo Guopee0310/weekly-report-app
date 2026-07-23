@@ -1,25 +1,67 @@
 <script setup lang="ts">
 import type { ReportData, ReportPage } from '~/types/weeklyReport'
 
+interface PersonApiEntry {
+  name: string
+  title: string
+  filenameLabel: string
+}
+
+interface WeeklyUploadApiEntry {
+  fileName: string
+  rawText: string
+  createdAt: string
+}
+
 const { generateAndDownload } = useReportPdfGenerator()
 
 const today = dateOnly(new Date())
 const [weekStart, weekEnd] = weekRange(new Date())
 const weekRangeLabel = `${fmtYMD(weekStart, '/')} ~ ${fmtYMD(weekEnd, '/')}`
+const weekQuery = { weekStart: fmtYMD(weekStart, '-'), weekEnd: fmtYMD(weekEnd, '-') }
 
-const peopleNames = Object.keys(PEOPLE)
-const selectedName = ref(peopleNames[0]!)
+const [{ data: peopleList, error: peopleError }, { data: sharedUpload, refresh: refreshSharedUpload }] =
+  await Promise.all([
+    useFetch<PersonApiEntry[]>('/api/people'),
+    useFetch<WeeklyUploadApiEntry | null>('/api/weekly-upload', { query: weekQuery }),
+  ])
+
+const PEOPLE = computed<Record<string, { title: string; filenameLabel: string }>>(() =>
+  Object.fromEntries((peopleList.value ?? []).map((p) => [p.name, { title: p.title, filenameLabel: p.filenameLabel }])),
+)
+const peopleNames = computed(() => Object.keys(PEOPLE.value))
+const peopleLoadFailed = computed(() => !!peopleError.value || (peopleList.value !== null && peopleNames.value.length === 0))
+
+const selectedName = ref('')
+watchEffect(() => {
+  if (!selectedName.value && peopleNames.value.length) selectedName.value = peopleNames.value[0]!
+})
+
 const suggestion = ref('')
 const feeling = ref('')
 const uploadedText = ref<string | null>(null)
 const uploadedFileName = ref<string | null>(null)
 const isDragOver = ref(false)
 const isGenerating = ref(false)
+const isSharingUpload = ref(false)
+const useOwnUpload = ref(false)
 const statusMessage = ref('')
 const statusKind = ref<'ok' | 'error' | ''>('')
 
 const currentPage = ref<ReportPage | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
+
+watchEffect(() => {
+  if (sharedUpload.value && !useOwnUpload.value) {
+    uploadedText.value = sharedUpload.value.rawText
+    uploadedFileName.value = sharedUpload.value.fileName
+  }
+})
+
+const hasSharedUpload = computed(() => !!sharedUpload.value && !useOwnUpload.value)
+const sharedUploadTimeLabel = computed(() =>
+  sharedUpload.value ? new Date(sharedUpload.value.createdAt).toLocaleString('zh-TW') : '',
+)
 
 const canGenerate = computed(() => uploadedText.value !== null && !isGenerating.value)
 
@@ -27,11 +69,17 @@ const previewData = computed<ReportData>(() => ({
   division: FIXED_DIVISION,
   dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
   targetName: selectedName.value,
-  title: PEOPLE[selectedName.value]!.title,
+  title: PEOPLE.value[selectedName.value]?.title ?? '',
   suggestion: suggestion.value,
   feeling: feeling.value,
   weekLines: [],
 }))
+
+function switchToOwnUpload(): void {
+  useOwnUpload.value = true
+  uploadedText.value = null
+  uploadedFileName.value = null
+}
 
 function openFilePicker(): void {
   fileInputEl.value?.click()
@@ -39,11 +87,27 @@ function openFilePicker(): void {
 
 function readFile(file: File): void {
   const reader = new FileReader()
-  reader.onload = () => {
+  reader.onload = async () => {
     uploadedText.value = reader.result as string
     uploadedFileName.value = file.name
     statusMessage.value = ''
     statusKind.value = ''
+
+    isSharingUpload.value = true
+    try {
+      await $fetch('/api/weekly-upload', {
+        method: 'POST',
+        body: { ...weekQuery, fileName: file.name, rawText: uploadedText.value },
+      })
+      await refreshSharedUpload()
+      useOwnUpload.value = false
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      statusMessage.value = `檔案已讀取,但存到後端共用失敗,其他人暫時無法直接使用這份檔案:${message}`
+      statusKind.value = 'error'
+    } finally {
+      isSharingUpload.value = false
+    }
   }
   reader.onerror = () => {
     statusMessage.value = '讀取檔案失敗,請再試一次。'
@@ -72,7 +136,7 @@ function buildReportData(): ReportData | null {
   }
 
   const targetName = selectedName.value
-  const info = PEOPLE[targetName]!
+  const info = PEOPLE.value[targetName]!
   const messages = parseMessages(uploadedText.value)
   const { filtered, allDates } = filterForPerson(messages, targetName, weekStart, weekEnd, today)
 
@@ -106,7 +170,7 @@ async function handleGenerate(): Promise<void> {
   isGenerating.value = true
 
   try {
-    const info = PEOPLE[selectedName.value]!
+    const info = PEOPLE.value[selectedName.value]!
     const outStub = `${fmtYMD(weekStart, '')}-${fmtYMD(weekEnd, '')}_${info.filenameLabel}_${selectedName.value}_週報`
     await generateAndDownload(data, outStub, currentPage)
     statusMessage.value = 'PDF 已下載到「下載」資料夾。'
@@ -130,7 +194,23 @@ async function handleGenerate(): Promise<void> {
 
         <div class="mb-5">
           <label class="mb-2 block text-xs font-bold text-white/55">上傳 LINE 匯出的 txt 檔案</label>
+
+          <div v-if="hasSharedUpload" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3.5 backdrop-blur-md">
+            <p class="text-sm text-white/70">
+              本週已由其他人上傳:<span class="font-bold text-white">{{ sharedUpload?.fileName }}</span>
+            </p>
+            <p class="mt-1 text-xs text-white/40">上傳時間:{{ sharedUploadTimeLabel }}</p>
+            <button
+              type="button"
+              class="mt-2.5 text-xs font-bold text-white/70 underline underline-offset-2 hover:text-white"
+              @click="switchToOwnUpload"
+            >
+              改用自己的檔案上傳
+            </button>
+          </div>
+
           <div
+            v-else
             class="dropzone rounded-2xl border-[1.5px] border-dashed border-white/20 bg-white/5 px-5 py-6 text-center backdrop-blur-md transition"
             :class="{ 'dropzone--active': isDragOver }"
             @click="openFilePicker"
@@ -141,7 +221,8 @@ async function handleGenerate(): Promise<void> {
           >
             <input ref="fileInputEl" type="file" accept=".txt" class="hidden" @change="handleFileInput" />
             <p class="text-sm text-white/60">
-              <template v-if="uploadedFileName">
+              <template v-if="isSharingUpload"> 上傳並同步給團隊中... </template>
+              <template v-else-if="uploadedFileName">
                 已選擇:<span class="font-bold text-white">{{ uploadedFileName }}</span>
               </template>
               <template v-else> 點這裡選檔案,或把 txt 拖曳進來 </template>
@@ -159,6 +240,9 @@ async function handleGenerate(): Promise<void> {
               {{ name }}
             </option>
           </select>
+          <p v-if="peopleLoadFailed" class="mt-1.5 text-xs font-bold text-[#ff9d9d]">
+            找不到人員資料,請確認後端資料庫連線設定。
+          </p>
         </div>
 
         <div class="mb-5">
