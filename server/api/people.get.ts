@@ -4,5 +4,6 @@ export default defineEventHandler(async () => {
     name: p.name,
     title: p.title,
     filenameLabel: p.filenameLabel,
+    department: p.department,
   }))
 })

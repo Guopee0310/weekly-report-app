@@ -17,6 +17,7 @@ model Person {
   name          String   @unique
   title         String
   filenameLabel String
+  department    String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

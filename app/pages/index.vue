@@ -5,6 +5,7 @@ interface PersonApiEntry {
   name: string
   title: string
   filenameLabel: string
+  department: string
 }
 
 interface WeeklyUploadApiEntry {
@@ -26,15 +27,31 @@ const [{ data: peopleList, error: peopleError }, { data: sharedUpload, refresh: 
     useFetch<WeeklyUploadApiEntry | null>('/api/weekly-upload', { query: weekQuery }),
   ])
 
-const PEOPLE = computed<Record<string, { title: string; filenameLabel: string }>>(() =>
-  Object.fromEntries((peopleList.value ?? []).map((p) => [p.name, { title: p.title, filenameLabel: p.filenameLabel }])),
+const PEOPLE = computed<Record<string, { title: string; filenameLabel: string; department: string }>>(() =>
+  Object.fromEntries(
+    (peopleList.value ?? []).map((p) => [p.name, { title: p.title, filenameLabel: p.filenameLabel, department: p.department }]),
+  ),
 )
 const peopleNames = computed(() => Object.keys(PEOPLE.value))
 const peopleLoadFailed = computed(() => !!peopleError.value || (peopleList.value !== null && peopleNames.value.length === 0))
 
+const groupNames = computed(() => {
+  const groups: string[] = []
+  for (const p of peopleList.value ?? []) {
+    if (!groups.includes(p.filenameLabel)) groups.push(p.filenameLabel)
+  }
+  return groups
+})
+const selectedGroup = ref('')
+watchEffect(() => {
+  if (selectedGroup.value && !groupNames.value.includes(selectedGroup.value)) selectedGroup.value = ''
+})
+
+const namesInGroup = computed(() => (peopleList.value ?? []).filter((p) => p.filenameLabel === selectedGroup.value).map((p) => p.name))
+
 const selectedName = ref('')
 watchEffect(() => {
-  if (!selectedName.value && peopleNames.value.length) selectedName.value = peopleNames.value[0]!
+  if (selectedName.value && !namesInGroup.value.includes(selectedName.value)) selectedName.value = ''
 })
 
 const suggestion = ref('')
@@ -51,6 +68,15 @@ const statusKind = ref<'ok' | 'error' | ''>('')
 const currentPage = ref<ReportPage | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 
+const glassBorderAngle = ref('0deg')
+function handleGlassMouseMove(event: MouseEvent): void {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const dx = event.clientX - rect.left - rect.width / 2
+  const dy = event.clientY - rect.top - rect.height / 2
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI + 90
+  glassBorderAngle.value = `${((deg % 360) + 360) % 360}deg`
+}
+
 watchEffect(() => {
   if (sharedUpload.value && !useOwnUpload.value) {
     uploadedText.value = sharedUpload.value.rawText
@@ -63,10 +89,10 @@ const sharedUploadTimeLabel = computed(() =>
   sharedUpload.value ? new Date(sharedUpload.value.createdAt).toLocaleString('zh-TW') : '',
 )
 
-const canGenerate = computed(() => uploadedText.value !== null && !isGenerating.value)
+const canGenerate = computed(() => uploadedText.value !== null && selectedName.value !== '' && !isGenerating.value)
 
 const previewData = computed<ReportData>(() => ({
-  division: FIXED_DIVISION,
+  division: PEOPLE.value[selectedName.value]?.department ?? '',
   dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
   targetName: selectedName.value,
   title: PEOPLE.value[selectedName.value]?.title ?? '',
@@ -129,6 +155,12 @@ function handleDrop(event: DragEvent): void {
 }
 
 function buildReportData(): ReportData | null {
+  if (!selectedName.value) {
+    statusMessage.value = '請先選擇組別與人名。'
+    statusKind.value = 'error'
+    return null
+  }
+
   if (!uploadedText.value) {
     statusMessage.value = '請先上傳 txt 檔案。'
     statusKind.value = 'error'
@@ -153,7 +185,7 @@ function buildReportData(): ReportData | null {
   const weekLines = buildWeekLines(stripped)
 
   return {
-    division: FIXED_DIVISION,
+    division: info.department,
     dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
     targetName,
     title: info.title,
@@ -175,6 +207,7 @@ async function handleGenerate(): Promise<void> {
     await generateAndDownload(data, outStub, currentPage)
     statusMessage.value = 'PDF 已下載到「下載」資料夾。'
     statusKind.value = 'ok'
+    window.open('https://drive.google.com/drive/folders/1d8YiGsEiyt7b_7Cxv0Ludy6iSmrqM0UX', '_blank', 'noopener,noreferrer')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     statusMessage.value = `產生 PDF 時發生錯誤:${message}`
@@ -188,7 +221,12 @@ async function handleGenerate(): Promise<void> {
 <template>
   <div class="report-bg min-h-screen px-5 py-12">
     <div class="mx-auto max-w-[620px]">
-      <div class="glass rounded-[26px] border border-white/10 p-8">
+      <div
+        class="glass relative overflow-hidden rounded-[26px] border border-white/10 p-8"
+        :style="{ '--angle': glassBorderAngle }"
+        @mousemove="handleGlassMouseMove"
+      >
+        <div class="glass-border-glow" />
         <h1 class="mb-1 text-2xl font-bold text-[#f2f3f7]">歐米茄恭喜又度過一週</h1>
         <p class="mb-6 text-sm text-white/55">{{ weekRangeLabel }}</p>
 
@@ -197,15 +235,15 @@ async function handleGenerate(): Promise<void> {
 
           <div v-if="hasSharedUpload" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3.5 backdrop-blur-md">
             <p class="text-sm text-white/70">
-              本週已由其他人上傳:<span class="font-bold text-white">{{ sharedUpload?.fileName }}</span>
+              已上傳:<span class="font-bold text-white">{{ sharedUpload?.fileName }}</span>
             </p>
             <p class="mt-1 text-xs text-white/40">上傳時間:{{ sharedUploadTimeLabel }}</p>
             <button
               type="button"
-              class="mt-2.5 text-xs font-bold text-white/70 underline underline-offset-2 hover:text-white"
+              class="mt-2.5 cursor-pointer text-xs font-bold text-white/70 underline underline-offset-2 hover:text-white"
               @click="switchToOwnUpload"
             >
-              改用自己的檔案上傳
+              若檔案有誤可自行上傳
             </button>
           </div>
 
@@ -230,19 +268,35 @@ async function handleGenerate(): Promise<void> {
           </div>
         </div>
 
-        <div class="mb-5">
-          <label class="mb-2 block text-xs font-bold text-white/55">我是</label>
-          <select
-            v-model="selectedName"
-            class="glow-field w-full rounded-2xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-[15px] text-[#f2f3f7] backdrop-blur-md focus:outline-none"
-          >
-            <option v-for="name in peopleNames" :key="name" :value="name" class="text-[#1a1030]">
-              {{ name }}
-            </option>
-          </select>
-          <p v-if="peopleLoadFailed" class="mt-1.5 text-xs font-bold text-[#ff9d9d]">
-            找不到人員資料,請確認後端資料庫連線設定。
-          </p>
+        <div class="mb-5 flex flex-col gap-3 sm:flex-row">
+          <div class="sm:flex-1">
+            <label class="mb-2 block text-xs font-bold text-white/55">組別</label>
+            <select
+              v-model="selectedGroup"
+              class="glow-field glow-select w-full rounded-2xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-[15px] text-[#f2f3f7] backdrop-blur-md focus:outline-none"
+            >
+              <option value="" disabled class="text-[#1a1030]">選擇組別</option>
+              <option v-for="group in groupNames" :key="group" :value="group" class="text-[#1a1030]">
+                {{ group }}
+              </option>
+            </select>
+          </div>
+
+          <div class="sm:flex-1">
+            <label class="mb-2 block text-xs font-bold text-white/55">我是</label>
+            <select
+              v-model="selectedName"
+              class="glow-field glow-select w-full rounded-2xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-[15px] text-[#f2f3f7] backdrop-blur-md focus:outline-none"
+            >
+              <option value="" disabled class="text-[#1a1030]">選擇職員</option>
+              <option v-for="name in namesInGroup" :key="name" :value="name" class="text-[#1a1030]">
+                {{ name }}
+              </option>
+            </select>
+            <p v-if="peopleLoadFailed" class="mt-1.5 text-xs font-bold text-[#ff9d9d]">
+              找不到人員資料,請確認後端資料庫連線設定。
+            </p>
+          </div>
         </div>
 
         <div class="mb-5">
@@ -267,7 +321,7 @@ async function handleGenerate(): Promise<void> {
           <button
             type="button"
             :disabled="!canGenerate"
-            class="generate-btn rounded-full bg-gradient-to-b from-white to-slate-100 px-7 py-3 text-[15px] font-bold text-[#14151b] transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-white/35"
+            class="generate-btn cursor-pointer rounded-full bg-gradient-to-b from-white to-slate-100 px-7 py-3 text-[15px] font-bold text-[#14151b] transition disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-white/35"
             @click="handleGenerate"
           >
             產生 PDF
@@ -308,6 +362,24 @@ async function handleGenerate(): Promise<void> {
     0 24px 70px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
+.glass-border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--angle, 0deg), transparent 0deg, rgba(255, 255, 255, 0.9) 20deg, transparent 45deg);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.glass:hover .glass-border-glow {
+  opacity: 1;
+}
 .dropzone {
   cursor: pointer;
   transition:
@@ -331,7 +403,7 @@ async function handleGenerate(): Promise<void> {
 }
 .glow-field {
   transition:
-    background 0.15s,
+    background-color 0.15s,
     border-color 0.15s,
     box-shadow 0.2s;
 }
@@ -347,6 +419,14 @@ async function handleGenerate(): Promise<void> {
   box-shadow:
     0 0 0 3px rgba(120, 150, 255, 0.18),
     0 0 28px rgba(120, 150, 255, 0.16);
+}
+.glow-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23f2f3f7' stroke-width='1.6'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.1rem center;
+  background-size: 13px;
+  padding-right: 2.5rem;
 }
 .generate-btn:hover:not(:disabled) {
   transform: translateY(-1px);

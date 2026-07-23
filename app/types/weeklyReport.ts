@@ -1,6 +1,7 @@
 export interface PersonInfo {
   title: string
   filenameLabel: string
+  department: string
 }
 
 export interface ParsedMessage {
