@@ -6,6 +6,8 @@ const THURSDAY_ROLLOVER_HOUR = 23 // 週四要到晚上這個時間之後,才換
 const HEADER_RE = /^(\d{1,2}:\d{2})\s+(\S+)\s*(.*)$/
 const INLINE_DATE_RE = /(\d{1,2})\/(\d{1,2})/
 const STANDALONE_DATE_RE = /^(\d{1,2})\/(\d{1,2})$/
+// LINE 匯出的日期分隔線,例如「五, 09/27/2024」,標示接下來的訊息屬於哪一天(含正確年份)
+const DIVIDER_RE = /^[日一二三四五六],\s*(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 
 function toHalfWidth(s: string): string {
   return s.normalize('NFKC')
@@ -15,16 +17,22 @@ export function parseMessages(text: string): ParsedMessage[] {
   const lines = text.split(/\r?\n/)
   const messages: ParsedMessage[] = []
   let current: ParsedMessage | null = null
+  let pendingYear: number | null = null
 
   for (const rawLine of lines) {
     const line = rawLine.trim()
+    const divider = DIVIDER_RE.exec(toHalfWidth(line))
+    if (divider) {
+      pendingYear = Number.parseInt(divider[3]!, 10)
+      continue
+    }
     const m = HEADER_RE.exec(line)
     if (m) {
       if (current) messages.push(current)
       const time = m[1]!
       const lineName = m[2]!
       const rest = m[3]!
-      current = { time, lineName, month: null, day: null, body: rest ? [rest] : [] }
+      current = { time, lineName, month: null, day: null, year: pendingYear, body: rest ? [rest] : [] }
     } else if (current !== null) {
       current.body.push(rawLine)
     }
@@ -73,7 +81,8 @@ export function weekRange(now: Date): [Date, Date] {
   return [weekStart, weekEnd]
 }
 
-export function resolveMessageDate(month: number, day: number, today: Date): Date {
+export function resolveMessageDate(month: number, day: number, today: Date, year: number | null = null): Date {
+  if (year !== null) return new Date(year, month - 1, day)
   let candidate = new Date(today.getFullYear(), month - 1, day)
   if (candidate > addDays(today, 3)) {
     candidate = new Date(today.getFullYear() - 1, month - 1, day)
@@ -121,7 +130,7 @@ export function filterForPerson(
 
   for (const msg of messages) {
     if (msg.month === null || msg.day === null) continue
-    const msgDate = resolveMessageDate(msg.month, msg.day, today)
+    const msgDate = resolveMessageDate(msg.month, msg.day, today, msg.year)
     if (Number.isNaN(msgDate.getTime())) continue
     allDates.push(msgDate)
     if (msgDate < startDate || msgDate > endDate) continue

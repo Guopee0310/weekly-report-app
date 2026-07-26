@@ -9,6 +9,7 @@ export interface ParsedMessage {
   lineName: string
   month: number | null
   day: number | null
+  year: number | null
   body: string[]
 }
 

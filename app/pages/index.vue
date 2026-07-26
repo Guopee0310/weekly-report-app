@@ -16,6 +16,8 @@ interface WeeklyUploadApiEntry {
 
 const { generateAndDownload } = useReportPdfGenerator()
 
+const DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1d8YiGsEiyt7b_7Cxv0Ludy6iSmrqM0UX'
+
 const today = dateOnly(new Date())
 const [weekStart, weekEnd] = weekRange(new Date())
 const weekRangeLabel = `${fmtYMD(weekStart, '/')} ~ ${fmtYMD(weekEnd, '/')}`
@@ -67,6 +69,7 @@ const statusKind = ref<'ok' | 'error' | ''>('')
 
 const currentPage = ref<ReportPage | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
+const showReplaceConfirm = ref(false)
 
 const glassBorderAngle = ref('0deg')
 function handleGlassMouseMove(event: MouseEvent): void {
@@ -105,6 +108,21 @@ function switchToOwnUpload(): void {
   useOwnUpload.value = true
   uploadedText.value = null
   uploadedFileName.value = null
+}
+
+function requestReplaceUpload(): void {
+  showReplaceConfirm.value = true
+}
+
+async function confirmReplaceUpload(): Promise<void> {
+  showReplaceConfirm.value = false
+  switchToOwnUpload()
+  await nextTick()
+  openFilePicker()
+}
+
+function cancelReplaceUpload(): void {
+  showReplaceConfirm.value = false
 }
 
 function openFilePicker(): void {
@@ -207,7 +225,7 @@ async function handleGenerate(): Promise<void> {
     await generateAndDownload(data, outStub, currentPage)
     statusMessage.value = 'PDF 已下載到「下載」資料夾。'
     statusKind.value = 'ok'
-    window.open('https://drive.google.com/drive/folders/1d8YiGsEiyt7b_7Cxv0Ludy6iSmrqM0UX', '_blank', 'noopener,noreferrer')
+    window.open(DRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     statusMessage.value = `產生 PDF 時發生錯誤:${message}`
@@ -231,19 +249,19 @@ async function handleGenerate(): Promise<void> {
         <p class="mb-6 text-sm text-white/55">{{ weekRangeLabel }}</p>
 
         <div class="mb-5">
-          <label class="mb-2 block text-xs font-bold text-white/55">上傳 LINE 匯出的 txt 檔案</label>
+          <label class="mb-2 block text-xs font-bold text-white/55">共享檔案<span class="text-[#9dffce]" v-if="hasSharedUpload"> (已上傳)</span></label>
 
           <div v-if="hasSharedUpload" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3.5 backdrop-blur-md">
             <p class="text-sm text-white/70">
-              已上傳:<span class="font-bold text-white">{{ sharedUpload?.fileName }}</span>
+              <span class="font-bold text-white">{{ sharedUpload?.fileName }}</span>
             </p>
             <p class="mt-1 text-xs text-white/40">上傳時間:{{ sharedUploadTimeLabel }}</p>
             <button
               type="button"
               class="mt-2.5 cursor-pointer text-xs font-bold text-white/70 underline underline-offset-2 hover:text-white"
-              @click="switchToOwnUpload"
+              @click="requestReplaceUpload"
             >
-              若檔案有誤可自行上傳
+              檔案有誤?
             </button>
           </div>
 
@@ -259,7 +277,7 @@ async function handleGenerate(): Promise<void> {
           >
             <input ref="fileInputEl" type="file" accept=".txt" class="hidden" @change="handleFileInput" />
             <p class="text-sm text-white/60">
-              <template v-if="isSharingUpload"> 上傳並同步給團隊中... </template>
+              <template v-if="isSharingUpload"> 上傳並同步中... </template>
               <template v-else-if="uploadedFileName">
                 已選擇:<span class="font-bold text-white">{{ uploadedFileName }}</span>
               </template>
@@ -341,6 +359,32 @@ async function handleGenerate(): Promise<void> {
     </div>
 
     <ReportPrintablePage v-if="currentPage" :page="currentPage" :data="previewData" />
+
+    <div
+      v-if="showReplaceConfirm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 backdrop-blur-sm"
+      @click.self="cancelReplaceUpload"
+    >
+      <div class="glass w-full max-w-[360px] rounded-[20px] border border-white/10 p-6 text-center">
+        <p class="text-sm text-white/80">此檔案為共用檔案,確定要上傳新的檔案取代嗎?</p>
+        <div class="mt-5 flex justify-center gap-3">
+          <button
+            type="button"
+            class="cursor-pointer rounded-full border border-white/20 px-5 py-2 text-sm font-bold text-white/70 transition hover:text-white"
+            @click="cancelReplaceUpload"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="cursor-pointer rounded-full bg-gradient-to-b from-white to-slate-100 px-5 py-2 text-sm font-bold text-[#14151b] transition"
+            @click="confirmReplaceUpload"
+          >
+            確定
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
