@@ -9,7 +9,7 @@ export function useReportPdfGenerator() {
     data: ReportData,
     outStub: string,
     currentPageRef: Ref<ReportPage | null>,
-  ): Promise<void> {
+  ): Promise<string> {
     const pages = await buildReportPages(data)
     const pdf = new jsPDF('p', 'mm', 'a4')
 
@@ -36,6 +36,9 @@ export function useReportPdfGenerator() {
     }
 
     pdf.save(`${outStub}.pdf`)
+
+    const dataUri = pdf.output('datauristring')
+    return dataUri.slice(dataUri.indexOf(',') + 1)
   }
 
   return { generateAndDownload }

@@ -102,6 +102,10 @@ export function fmtMD(d: Date): string {
   return `${mm}/${dd}`
 }
 
+export function fmtMNoZero(d: Date): string {
+  return `${d.getMonth() + 1}.${d.getDate()}`
+}
+
 export function buildWeekLines(filtered: FilteredEntry[]): string[] {
   const lines: string[] = []
   filtered.forEach(({ date, bodyText }, i) => {

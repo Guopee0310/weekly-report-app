@@ -222,10 +222,27 @@ async function handleGenerate(): Promise<void> {
   try {
     const info = PEOPLE.value[selectedName.value]!
     const outStub = `${fmtYMD(weekStart, '')}-${fmtYMD(weekEnd, '')}_${info.filenameLabel}_${selectedName.value}_週報`
-    await generateAndDownload(data, outStub, currentPage)
-    statusMessage.value = 'PDF 已下載到「下載」資料夾。'
+    const pdfBase64 = await generateAndDownload(data, outStub, currentPage)
+    statusMessage.value = 'PDF 已下載到「下載」資料夾,正在自動上傳到雲端硬碟...'
     statusKind.value = 'ok'
-    window.open(DRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer')
+
+    try {
+      await $fetch('/api/drive-upload', {
+        method: 'POST',
+        body: {
+          weekLabel: `${fmtMNoZero(weekStart)}-${fmtMNoZero(weekEnd)}`,
+          fileName: `${outStub}.pdf`,
+          pdfBase64,
+        },
+      })
+      statusMessage.value = 'PDF 已下載,並已自動上傳到雲端硬碟的對應週資料夾。'
+      statusKind.value = 'ok'
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+      statusMessage.value = `PDF 已下載到「下載」資料夾,但自動上傳雲端硬碟失敗,請手動把檔案拖曳進資料夾:${message}`
+      statusKind.value = 'error'
+      window.open(DRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer')
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     statusMessage.value = `產生 PDF 時發生錯誤:${message}`
