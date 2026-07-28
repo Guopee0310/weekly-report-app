@@ -14,7 +14,7 @@ interface WeeklyUploadApiEntry {
   createdAt: string
 }
 
-const { generateAndDownload } = useReportPdfGenerator()
+const { generateReport } = useReportPdfGenerator()
 
 const DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1d8YiGsEiyt7b_7Cxv0Ludy6iSmrqM0UX'
 
@@ -222,12 +222,12 @@ async function handleGenerate(): Promise<void> {
   try {
     const info = PEOPLE.value[selectedName.value]!
     const outStub = `${fmtYMD(weekStart, '')}-${fmtYMD(weekEnd, '')}_${info.filenameLabel}_${selectedName.value}_週報`
-    const pdfBase64 = await generateAndDownload(data, outStub, currentPage)
-    statusMessage.value = 'PDF 已下載到「下載」資料夾,正在自動上傳到雲端硬碟...'
+    const { pdfBase64, download } = await generateReport(data, outStub, currentPage)
+    statusMessage.value = '正在自動上傳到雲端硬碟...'
     statusKind.value = 'ok'
 
     try {
-      await $fetch('/api/drive-upload', {
+      const uploadResult = await $fetch<{ fileId: string; url: string; folderUrl: string }>('/api/drive-upload', {
         method: 'POST',
         body: {
           weekLabel: `${fmtMNoZero(weekStart)}-${fmtMNoZero(weekEnd)}`,
@@ -235,11 +235,13 @@ async function handleGenerate(): Promise<void> {
           pdfBase64,
         },
       })
-      statusMessage.value = 'PDF 已下載,並已自動上傳到雲端硬碟的對應週資料夾。'
+      statusMessage.value = '已自動上傳到雲端硬碟的對應週資料夾。'
       statusKind.value = 'ok'
+      window.open(uploadResult.folderUrl, '_blank', 'noopener,noreferrer')
     } catch (uploadErr) {
+      download()
       const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
-      statusMessage.value = `PDF 已下載到「下載」資料夾,但自動上傳雲端硬碟失敗,請手動把檔案拖曳進資料夾:${message}`
+      statusMessage.value = `自動上傳雲端硬碟失敗,已改為下載到本機「下載」資料夾,請手動把檔案拖曳進資料夾:${message}`
       statusKind.value = 'error'
       window.open(DRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer')
     }

@@ -9,7 +9,7 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, bodySchema.parse)
 
-  const result = await $fetch<{ fileId: string; url: string }>(process.env.GAS_DRIVE_UPLOAD_URL!, {
+  const result = await $fetch<{ fileId: string; url: string; folderUrl: string }>(process.env.GAS_DRIVE_UPLOAD_URL!, {
     method: 'POST',
     body: { ...body, secret: process.env.GAS_SHARED_SECRET },
   })

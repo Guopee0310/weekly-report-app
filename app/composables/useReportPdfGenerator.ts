@@ -5,11 +5,11 @@ import type { ReportData, ReportPage } from '~/types/weeklyReport'
 import { buildReportPages } from '~/utils/reportPagination'
 
 export function useReportPdfGenerator() {
-  async function generateAndDownload(
+  async function generateReport(
     data: ReportData,
     outStub: string,
     currentPageRef: Ref<ReportPage | null>,
-  ): Promise<string> {
+  ): Promise<{ pdfBase64: string; download: () => void }> {
     const pages = await buildReportPages(data)
     const pdf = new jsPDF('p', 'mm', 'a4')
 
@@ -35,11 +35,11 @@ export function useReportPdfGenerator() {
       pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
     }
 
-    pdf.save(`${outStub}.pdf`)
-
     const dataUri = pdf.output('datauristring')
-    return dataUri.slice(dataUri.indexOf(',') + 1)
+    const pdfBase64 = dataUri.slice(dataUri.indexOf(',') + 1)
+
+    return { pdfBase64, download: () => pdf.save(`${outStub}.pdf`) }
   }
 
-  return { generateAndDownload }
+  return { generateReport }
 }

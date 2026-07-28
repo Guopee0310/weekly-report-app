@@ -2,6 +2,8 @@
 
 > 這份文件是要貼給「瀏覽器裡操作 Google 畫面的 AI」看的,目的是帶著使用者(不是工程師,是這個專案的維護者)手動點完 script.google.com 的設定畫面。**請不要要求使用者把程式碼裡的 `SHARED_SECRET` 或部署網址貼進這個對話框**——這兩個是機密資訊,只要協助使用者在畫面上點選、貼程式碼、部署就好。
 
+> **狀態更新**:Apps Script 已經部署過、也已經實測成功上傳過檔案。下面「步驟 2」的程式碼多加了一行(回傳 `folderUrl`,讓產生 PDF 後可以自動跳出對應週資料夾給使用者看),**這次只需要去既有的 Apps Script 專案裡更新程式碼、部署成「新版本」就好,不需要重新走一次步驟 1/3 建全新專案**——部署網址跟密鑰都不會變,`.env` 不用改。
+
 ## 背景(前因後果,含之前走過的彎路)
 
 這是一個內部工具「週報產生器」(Nuxt app,`weekly-report-app`),讓同事把 LINE 群組匯出的 txt 檔轉成週報 PDF。目前的痛點:PDF 產生後只會存到使用者本機的下載資料夾,還要使用者自己手動把檔案拖進公司 Google Drive 裡對應週別的子資料夾(例如 `7.17-7.23`)。因為用這工具的人大多不是技術人員,不能要求每個人都多做這個手動搬檔案的動作。
@@ -43,8 +45,11 @@ function doPost(e) {
   const blob = Utilities.newBlob(bytes, 'application/pdf', body.fileName)
   const file = weekFolder.createFile(blob)
 
-  return ContentService.createTextOutput(JSON.stringify({ fileId: file.getId(), url: file.getUrl() }))
-    .setMimeType(ContentService.MimeType.JSON)
+  return ContentService.createTextOutput(JSON.stringify({
+    fileId: file.getId(),
+    url: file.getUrl(),
+    folderUrl: weekFolder.getUrl(),
+  })).setMimeType(ContentService.MimeType.JSON)
 }
 ```
 
@@ -52,7 +57,7 @@ function doPost(e) {
 
 `PARENT_FOLDER_ID` 已經是正確的目標資料夾 ID,不用改。
 
-### 3. 部署成網頁應用程式(Web App)
+### 3a.(第一次設定才需要)部署成網頁應用程式(Web App)
 - 右上角「部署」→「新增部署作業」
 - 類型選「網頁應用程式」
 - 執行身分:**我**
@@ -61,10 +66,17 @@ function doPost(e) {
 - 過程中會跳出 Google 的授權畫面(因為這個腳本要存取你自己的 Drive),選「進階」→「前往[專案名稱](不安全)」→ 允許——這是正常的,因為是自己寫的腳本存取自己的 Drive,Google 對所有沒送審的 Apps Script 都會顯示這個警告
 - 部署完成後,會顯示一個「網頁應用程式網址」,結尾是 `/exec`,**把這個網址記下來**
 
-### 4. 把網址跟密鑰交回來
+### 3b.(已經部署過、這次只是更新程式碼的話)部署「新版本」,不要建新部署
+- 貼完新的程式碼、存檔後,右上角「部署」→「管理部署作業」
+- 找到現有的那個網頁應用程式部署,點旁邊的鉛筆(編輯)圖示
+- 版本選單改選「新版本」
+- 按「部署」
+- **網址不會變**,不用改 `.env`,`GAS_DRIVE_UPLOAD_URL` 跟 `GAS_SHARED_SECRET` 都維持原樣
+
+### 4.(只有第一次設定、拿到全新網址時才需要)把網址跟密鑰交回來
 
 把下面兩樣東西給我(或直接自己填進專案根目錄 `C:\Users\TKB-USER\weekly-report-app\.env`):
-- 步驟 3 拿到的部署網址 → 填進 `.env` 的 `GAS_DRIVE_UPLOAD_URL`
+- 步驟 3a 拿到的部署網址 → 填進 `.env` 的 `GAS_DRIVE_UPLOAD_URL`
 - 步驟 2 設定的 `SHARED_SECRET` 值 → 填進 `.env` 的 `GAS_SHARED_SECRET`(兩邊要一模一樣)
 
 ## 完成後怎麼確認
