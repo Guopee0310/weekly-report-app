@@ -4,3 +4,47 @@ html,
 body {
   background-color: #0a0b10;
 }
+
+.loader-spinner {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+.loader-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+}
+.loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.95) 60deg, transparent 150deg);
+  animation: loader-spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+}
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.report-bg {
+  background:
+    radial-gradient(circle at 18% 15%, rgba(70, 90, 150, 0.3), transparent 45%),
+    radial-gradient(circle at 82% 20%, rgba(90, 70, 140, 0.26), transparent 45%),
+    radial-gradient(circle at 25% 88%, rgba(50, 110, 140, 0.22), transparent 50%),
+    radial-gradient(circle at 85% 82%, rgba(80, 60, 120, 0.24), transparent 50%),
+    linear-gradient(160deg, #0a0b10 0%, #101219 55%, #0b0d13 100%);
+  background-attachment: fixed;
+}
+.glass {
+  background: rgba(255, 255, 255, 0.055);
+  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}

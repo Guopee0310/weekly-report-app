@@ -71,6 +71,18 @@ const currentPage = ref<ReportPage | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const showReplaceConfirm = ref(false)
 
+interface GenerateResult {
+  kind: 'ok' | 'error'
+  message: string
+  folderUrl: string | null
+}
+const generateResult = ref<GenerateResult | null>(null)
+
+function viewGenerateResultFolder(): void {
+  if (generateResult.value?.folderUrl) window.open(generateResult.value.folderUrl, '_blank', 'noopener,noreferrer')
+  generateResult.value = null
+}
+
 const glassBorderAngle = ref('0deg')
 function handleGlassMouseMove(event: MouseEvent): void {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -217,6 +229,7 @@ async function handleGenerate(): Promise<void> {
   const data = buildReportData()
   if (!data) return
 
+  generateResult.value = null
   isGenerating.value = true
   if (!statusMessage.value) {
     statusMessage.value = '正在產生 PDF,請稍候...'
@@ -241,18 +254,19 @@ async function handleGenerate(): Promise<void> {
       })
       statusMessage.value = '已自動上傳到雲端硬碟的對應週資料夾。'
       statusKind.value = 'ok'
-      window.open(uploadResult.folderUrl, '_blank', 'noopener,noreferrer')
+      generateResult.value = { kind: 'ok', message: '已自動上傳至指定資料夾', folderUrl: uploadResult.folderUrl }
     } catch (uploadErr) {
       download()
       const message = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
       statusMessage.value = `自動上傳雲端硬碟失敗,已改為下載到本機「下載」資料夾,請手動把檔案拖曳進資料夾:${message}`
       statusKind.value = 'error'
-      window.open(DRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer')
+      generateResult.value = { kind: 'error', message: '自動上傳失敗,已改為下載到本機「下載」資料夾', folderUrl: DRIVE_FOLDER_URL }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     statusMessage.value = `產生 PDF 時發生錯誤:${message}`
     statusKind.value = 'error'
+    generateResult.value = { kind: 'error', message: '產生 PDF 時發生錯誤', folderUrl: null }
   } finally {
     isGenerating.value = false
   }
@@ -383,6 +397,49 @@ async function handleGenerate(): Promise<void> {
 
     <ReportPrintablePage v-if="currentPage" :page="currentPage" :data="previewData" />
 
+    <Transition name="loading-fade">
+      <div
+        v-if="isGenerating || generateResult"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-5 backdrop-blur-md"
+      >
+        <div class="loading-panel glass flex w-full max-w-[300px] flex-col items-center gap-5 rounded-[24px] border border-white/10 p-8 text-center">
+          <template v-if="isGenerating">
+            <div class="loader-spinner">
+              <div class="loader-track" />
+              <div class="loader-ring" />
+            </div>
+            <p class="text-sm font-medium text-white/85">{{ statusMessage || '處理中...' }}</p>
+          </template>
+          <template v-else-if="generateResult">
+            <p
+              class="text-sm font-medium"
+              :class="generateResult.kind === 'ok' ? 'text-[#9dffce]' : 'text-[#ff9d9d]'"
+            >
+              {{ generateResult.message }}
+            </p>
+            <div class="flex gap-3">
+              <button
+                v-if="generateResult.folderUrl"
+                type="button"
+                class="cursor-pointer rounded-full bg-gradient-to-b from-white to-slate-100 px-5 py-2 text-sm font-bold text-[#14151b] transition"
+                @click="viewGenerateResultFolder"
+              >
+                查看
+              </button>
+              <button
+                v-else
+                type="button"
+                class="cursor-pointer rounded-full bg-gradient-to-b from-white to-slate-100 px-5 py-2 text-sm font-bold text-[#14151b] transition"
+                @click="generateResult = null"
+              >
+                關閉
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Transition>
+
     <div
       v-if="showReplaceConfirm"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 backdrop-blur-sm"
@@ -412,23 +469,6 @@ async function handleGenerate(): Promise<void> {
 </template>
 
 <style scoped>
-.report-bg {
-  background:
-    radial-gradient(circle at 18% 15%, rgba(70, 90, 150, 0.3), transparent 45%),
-    radial-gradient(circle at 82% 20%, rgba(90, 70, 140, 0.26), transparent 45%),
-    radial-gradient(circle at 25% 88%, rgba(50, 110, 140, 0.22), transparent 50%),
-    radial-gradient(circle at 85% 82%, rgba(80, 60, 120, 0.24), transparent 50%),
-    linear-gradient(160deg, #0a0b10 0%, #101219 55%, #0b0d13 100%);
-  background-attachment: fixed;
-}
-.glass {
-  background: rgba(255, 255, 255, 0.055);
-  backdrop-filter: blur(30px) saturate(160%);
-  -webkit-backdrop-filter: blur(30px) saturate(160%);
-  box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
 .glass-border-glow {
   position: absolute;
   inset: 0;
@@ -501,5 +541,21 @@ async function handleGenerate(): Promise<void> {
     0 12px 30px rgba(0, 0, 0, 0.4),
     0 0 30px rgba(255, 255, 255, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.loading-fade-enter-active,
+.loading-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.loading-fade-enter-from,
+.loading-fade-leave-to {
+  opacity: 0;
+}
+.loading-fade-enter-active .loading-panel,
+.loading-fade-leave-active .loading-panel {
+  transition: transform 0.25s ease;
+}
+.loading-fade-enter-from .loading-panel,
+.loading-fade-leave-to .loading-panel {
+  transform: scale(0.94);
 }
 </style>
