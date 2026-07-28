@@ -218,6 +218,10 @@ async function handleGenerate(): Promise<void> {
   if (!data) return
 
   isGenerating.value = true
+  if (!statusMessage.value) {
+    statusMessage.value = '正在產生 PDF,請稍候...'
+    statusKind.value = 'ok'
+  }
 
   try {
     const info = PEOPLE.value[selectedName.value]!
