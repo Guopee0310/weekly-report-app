@@ -127,7 +127,7 @@ table.doc-table td {
   margin-top: -14px;
 }
 .cell-wrap--daterange {
-  margin-top: -6px;
+  margin-top: -10px;
 }
 .doc-header-table {
   width: calc(100% + 36px) !important;

@@ -3,6 +3,7 @@
 html,
 body {
   background-color: #0a0b10;
+  overflow-x: hidden;
 }
 
 .loader-spinner {
@@ -47,4 +48,41 @@ body {
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.boot-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.boot-mark {
+  width: 160px;
+  height: auto;
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, black 42%, transparent 68%);
+  mask-image: radial-gradient(circle, black 42%, transparent 68%);
+  animation: mark-breathe 2.2s ease-in-out infinite;
+}
+@keyframes mark-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+.page-enter-enter-active {
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.55s ease-out;
+}
+.page-enter-enter-from {
+  opacity: 0;
+  transform: scale(0.98);
+  filter: blur(8px);
 }

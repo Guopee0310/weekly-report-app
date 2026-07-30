@@ -149,9 +149,11 @@ export function filterForPerson(
 }
 
 export function stripSelfTag(filtered: FilteredEntry[], targetName: string): FilteredEntry[] {
+  // 內容裡的自我標示有時只打名字、不含姓氏,姓氏以外的部分也要能比對到才會被移除。
+  const givenName = targetName.length > 1 ? targetName.slice(1) : targetName
   return filtered.map(({ date, time, bodyText }) => {
     const lines = bodyText.split('\n').filter((l) => l.trim())
-    if (lines[0]?.includes(targetName)) lines.shift()
+    if (lines[0] && (lines[0].includes(targetName) || lines[0].includes(givenName))) lines.shift()
     return { date, time, bodyText: lines.join('\n') }
   })
 }

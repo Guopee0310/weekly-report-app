@@ -111,8 +111,8 @@ const previewData = computed<ReportData>(() => ({
   dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
   targetName: selectedName.value,
   title: PEOPLE.value[selectedName.value]?.title ?? '',
-  suggestion: suggestion.value,
-  feeling: feeling.value,
+  suggestion: suggestion.value.trim() || '無',
+  feeling: feeling.value.trim() || '無',
   weekLines: [],
 }))
 
@@ -219,8 +219,8 @@ function buildReportData(): ReportData | null {
     dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
     targetName,
     title: info.title,
-    suggestion: suggestion.value.trim(),
-    feeling: feeling.value.trim(),
+    suggestion: suggestion.value.trim() || '無',
+    feeling: feeling.value.trim() || '無',
     weekLines,
   }
 }
@@ -282,7 +282,8 @@ async function handleGenerate(): Promise<void> {
         @mousemove="handleGlassMouseMove"
       >
         <div class="glass-border-glow" />
-        <h1 class="mb-1 text-2xl font-bold text-[#f2f3f7]">歐米茄恭喜又度過一週</h1>
+        <div class="glass-sweep" />
+        <h1 class="mb-1 text-2xl font-bold text-[#f2f3f7]">週報產生器</h1>
         <p class="mb-6 text-sm text-white/55">{{ weekRangeLabel }}</p>
 
         <div class="mb-5">
@@ -486,6 +487,19 @@ async function handleGenerate(): Promise<void> {
 }
 .glass:hover .glass-border-glow {
   opacity: 1;
+}
+.glass-sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.07) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: glass-sweep-once 1.8s cubic-bezier(0.22, 1, 0.36, 1) 0.3s 1 both;
+  pointer-events: none;
+}
+@keyframes glass-sweep-once {
+  to {
+    transform: translateX(120%);
+  }
 }
 .dropzone {
   cursor: pointer;
