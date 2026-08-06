@@ -26,11 +26,11 @@ export function useReportPdfGenerator() {
       if (!el) throw new Error('printable page element not found')
 
       const canvas = await html2canvas(el, {
-        scale: 3,
+        scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
       })
-      const imgData = canvas.toDataURL('image/jpeg', 0.97)
+      const imgData = canvas.toDataURL('image/jpeg', 0.3)
       if (i > 0) pdf.addPage()
       pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
     }
