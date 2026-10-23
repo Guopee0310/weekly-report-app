@@ -11,17 +11,43 @@ interface PersonApiEntry {
 interface WeeklyUploadApiEntry {
   fileName: string
   rawText: string
-  createdAt: string
+  updatedAt: string
 }
 
 const { generateReport } = useReportPdfGenerator()
 
 const DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1d8YiGsEiyt7b_7Cxv0Ludy6iSmrqM0UX'
 
-const today = dateOnly(new Date())
-const [weekStart, weekEnd] = weekRange(new Date())
-const weekRangeLabel = `${fmtYMD(weekStart, '/')} ~ ${fmtYMD(weekEnd, '/')}`
-const weekQuery = { weekStart: fmtYMD(weekStart, '-'), weekEnd: fmtYMD(weekEnd, '-') }
+// 週次不能只在頁面載入時算一次:分頁若在週四 23 點前打開、一直沒重新整理,
+// 跨過換週時間後還會沿用舊週次,PDF 就會被傳進上一週的資料夾。
+const now = ref(new Date())
+function refreshNow(): void {
+  now.value = new Date()
+}
+// 切回這個分頁時,除了重算週次,也重抓一次共享檔案:別人可能已經換掉檔案,
+// 不重抓的話這個分頁會一直拿舊的 txt 產生 PDF。
+function handlePageActive(): void {
+  if (document.visibilityState !== 'visible') return
+  refreshNow()
+  if (!isGenerating.value && !isSharingUpload.value) refreshSharedUpload()
+}
+onMounted(() => {
+  const timer = setInterval(refreshNow, 60_000)
+  document.addEventListener('visibilitychange', handlePageActive)
+  window.addEventListener('focus', handlePageActive)
+  onBeforeUnmount(() => {
+    clearInterval(timer)
+    document.removeEventListener('visibilitychange', handlePageActive)
+    window.removeEventListener('focus', handlePageActive)
+  })
+})
+
+const today = computed(() => dateOnly(now.value))
+const currentWeek = computed(() => weekRange(now.value))
+const weekStart = computed(() => currentWeek.value[0])
+const weekEnd = computed(() => currentWeek.value[1])
+const weekRangeLabel = computed(() => `${fmtYMD(weekStart.value, '/')} ~ ${fmtYMD(weekEnd.value, '/')}`)
+const weekQuery = computed(() => ({ weekStart: fmtYMD(weekStart.value, '-'), weekEnd: fmtYMD(weekEnd.value, '-') }))
 
 const [{ data: peopleList, error: peopleError }, { data: sharedUpload, refresh: refreshSharedUpload }] =
   await Promise.all([
@@ -101,14 +127,14 @@ watchEffect(() => {
 
 const hasSharedUpload = computed(() => !!sharedUpload.value && !useOwnUpload.value)
 const sharedUploadTimeLabel = computed(() =>
-  sharedUpload.value ? new Date(sharedUpload.value.createdAt).toLocaleString('zh-TW') : '',
+  sharedUpload.value ? new Date(sharedUpload.value.updatedAt).toLocaleString('zh-TW') : '',
 )
 
 const canGenerate = computed(() => uploadedText.value !== null && selectedName.value !== '' && !isGenerating.value)
 
 const previewData = computed<ReportData>(() => ({
   division: PEOPLE.value[selectedName.value]?.department ?? '',
-  dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
+  dateRangeText: `${fmtYMD(weekStart.value, '/')}-${fmtYMD(weekEnd.value, '/')}`,
   targetName: selectedName.value,
   title: PEOPLE.value[selectedName.value]?.title ?? '',
   suggestion: suggestion.value.trim() || '無',
@@ -153,7 +179,7 @@ function readFile(file: File): void {
     try {
       await $fetch('/api/weekly-upload', {
         method: 'POST',
-        body: { ...weekQuery, fileName: file.name, rawText: uploadedText.value },
+        body: { ...weekQuery.value, fileName: file.name, rawText: uploadedText.value },
       })
       await refreshSharedUpload()
       useOwnUpload.value = false
@@ -175,6 +201,8 @@ function readFile(file: File): void {
 function handleFileInput(event: Event): void {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
+  // 清掉 value,下次選到同名檔案(LINE 匯出的檔名每次都一樣)才會再觸發 change
+  input.value = ''
   if (file) readFile(file)
 }
 
@@ -200,11 +228,11 @@ function buildReportData(): ReportData | null {
   const targetName = selectedName.value
   const info = PEOPLE.value[targetName]!
   const messages = parseMessages(uploadedText.value)
-  const { filtered, allDates } = filterForPerson(messages, targetName, weekStart, weekEnd, today)
+  const { filtered, allDates } = filterForPerson(messages, targetName, weekStart.value, weekEnd.value, today.value)
 
-  if (allDates.length && Math.min(...allDates.map((d) => d.getTime())) > weekStart.getTime()) {
+  if (allDates.length && Math.min(...allDates.map((d) => d.getTime())) > weekStart.value.getTime()) {
     const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())))
-    statusMessage.value = `警告:匯出的檔案最早只回溯到 ${fmtMD(minDate)},沒有涵蓋到起始日 ${fmtMD(weekStart)},結果可能不完整。`
+    statusMessage.value = `警告:匯出的檔案最早只回溯到 ${fmtMD(minDate)},沒有涵蓋到起始日 ${fmtMD(weekStart.value)},結果可能不完整。`
     statusKind.value = 'error'
   } else {
     statusMessage.value = ''
@@ -216,7 +244,7 @@ function buildReportData(): ReportData | null {
 
   return {
     division: info.department,
-    dateRangeText: `${fmtYMD(weekStart, '/')}-${fmtYMD(weekEnd, '/')}`,
+    dateRangeText: `${fmtYMD(weekStart.value, '/')}-${fmtYMD(weekEnd.value, '/')}`,
     targetName,
     title: info.title,
     suggestion: suggestion.value.trim() || '無',
@@ -226,6 +254,7 @@ function buildReportData(): ReportData | null {
 }
 
 async function handleGenerate(): Promise<void> {
+  refreshNow()
   const data = buildReportData()
   if (!data) return
 
@@ -238,7 +267,7 @@ async function handleGenerate(): Promise<void> {
 
   try {
     const info = PEOPLE.value[selectedName.value]!
-    const outStub = `${fmtYMD(weekStart, '')}-${fmtYMD(weekEnd, '')}_${info.filenameLabel}_${selectedName.value}_週報`
+    const outStub = `${fmtYMD(weekStart.value, '')}-${fmtYMD(weekEnd.value, '')}_${info.filenameLabel}_${selectedName.value}_週報`
     const { pdfBase64, download } = await generateReport(data, outStub, currentPage)
     statusMessage.value = '正在自動上傳到雲端硬碟...'
     statusKind.value = 'ok'
@@ -247,7 +276,7 @@ async function handleGenerate(): Promise<void> {
       const uploadResult = await $fetch<{ fileId: string; url: string; folderUrl: string }>('/api/drive-upload', {
         method: 'POST',
         body: {
-          weekLabel: `${fmtMNoZero(weekStart)}-${fmtMNoZero(weekEnd)}`,
+          weekLabel: `${fmtMNoZero(weekStart.value)}-${fmtMNoZero(weekEnd.value)}`,
           fileName: `${outStub}.pdf`,
           pdfBase64,
         },

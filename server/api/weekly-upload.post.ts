@@ -19,5 +19,5 @@ export default defineEventHandler(async (event) => {
     create: { weekStart, weekEnd, fileName: body.fileName, rawText: body.rawText },
   })
 
-  return { fileName: upload.fileName, createdAt: upload.createdAt }
+  return { fileName: upload.fileName, updatedAt: upload.updatedAt }
 })

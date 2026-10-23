@@ -22,6 +22,6 @@ export default defineEventHandler(async (event) => {
   return {
     fileName: upload.fileName,
     rawText: upload.rawText,
-    createdAt: upload.createdAt,
+    updatedAt: upload.updatedAt,
   }
 })
